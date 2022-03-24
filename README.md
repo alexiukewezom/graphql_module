@@ -1,39 +1,78 @@
-<!-- 
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
+# GraphQL Module
 
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/guides/libraries/writing-package-pages). 
+Модуль GraphQL клиента работающий на библиотеке [graphql](https://pub.dev/packages/graphql).
+## Инициализация 
 
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/guides/libraries/create-library-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/developing-packages). 
--->
-
-TODO: Put a short description of the package here that helps potential users
-know whether this package might be useful for them.
-
-## Features
-
-TODO: List what your package can do. Maybe include images, gifs, or videos.
-
-## Getting started
-
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
-
-## Usage
-
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder. 
+Для DI используется GetX.
 
 ```dart
-const like = 'sample';
+await Get.putAsync(
+  () => GraphModule(
+    baseUrl: '{ url }',
+    getHeaders: () async => {
+      'Authorization': 'Bearer ${SPCache.getAccessToken()}',
+    },
+    refreshEngine: GraphModuleRefreshEngine(
+      getRefreshToken: () async => SPCache.getRefreshToken(),
+      sendRefresh: () async => await AuthRepository.refreshToken(),
+    ),
+    onTokenRot: () {
+      AppBuilder.bloc.logout();
+    },
+    handleError: (exception) {
+     
+    },
+  ).init(),
+);
 ```
 
-## Additional information
+## Usage
+### Create Repository
+```dart
+class FaqRepository {
+  // AppResponse имеет generic возвращаемого типа (рекомендуется всегда делать опциональным тк запрос может вернуть ошибку)
+  static Future<AppResponse<List<FAQGroupModel>?>> faqGroups() async {
+    print('FaqRepository: faqGroups...');
+    final QueryOptions options = QueryOptions(
+      // Документ содержит в себе запрос созданный в плейграунде (реализация следующий шаг)
+      document: gql(FaqPlayground.faqGroups),
+    );
 
-TODO: Tell users more about the package: where to find more information, how to 
-contribute to the package, how to file issues, what response they can expect 
-from the package authors, and more.
+    // Выполнение запроса
+    final result = await GraphModule.module.request(options);
+    if (result.success) {
+      // Парсинг успешного ответа
+      try {
+        return AppResponse<List<FAQGroupModel>>(
+          success: true,
+          data: List<FAQGroupModel>.from(
+            (result.data['faqGroups'] ?? []).map(
+              (x) => FAQGroupModel.fromNetwork(x),
+            ),
+          ),
+        );
+      } catch (err) {
+        print(err);
+      }
+    }
+    // Преобразование ответа от GraphModule в нужный generic с сохранением ошибок и возвратом success: false
+    return result.newGeneric<List<FAQGroupModel>?>(success: false);
+  }
+}
+```
+### Create Playground
+```dart
+class FaqPlayground {
+  static String faqGroups =
+      'query faqGroups { faqGroups { ${FAQGroupModel.graph} } }';
+}
+
+class FAQGroupModel {
+  final String id;
+  final String name;
+
+  // Перечень запрашиваемых объектов  
+  static String graph = 'id name';
+  static String graphShort = 'id';
+}
+```
